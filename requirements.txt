@@ -1,0 +1,4 @@
+werkzeug
+pyyaml
+requests
+pbr>=1.8

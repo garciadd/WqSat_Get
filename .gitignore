@@ -1,0 +1,6 @@
+# Excluir archivos y carpetas generados por la instalación del paquete
+*.egg-info/
+
+# Excluir archivos de configuración sensibles
+config.yaml
+regions.yaml
