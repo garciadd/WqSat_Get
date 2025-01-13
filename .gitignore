@@ -4,3 +4,7 @@
 # Exclude sensitive configuration files
 config.yaml
 regions.yaml
+
+# Ignorar archivos .pyc y carpetas __pycache__
+*.pyc
+__pycache__/
