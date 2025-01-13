@@ -28,6 +28,7 @@ from tqdm import tqdm
 # Subfunctions
 from wqsat_dl import utils
 
+
 class download:
 
     def __init__(self, start_date, end_date, coordinates, platform, product_type, cloud=100):
@@ -51,9 +52,6 @@ class download:
         Example: sentinel: {password: password, user: username}
         """
         
-        # Open the request session
-        self.session = requests.Session()
-        
         #Search parameters
         self.start_date = start_date.strftime('%Y-%m-%dT%H:%M:%SZ')
         self.end_date = end_date.strftime('%Y-%m-%dT%H:%M:%SZ')
@@ -62,14 +60,19 @@ class download:
         self.cloud = int(cloud)
         self.coord = coordinates
 
+        if not all(key in self.coord for key in ['W', 'S', 'E', 'N']):
+            raise ValueError("Coordinates must include 'W', 'S', 'E', and 'N'.")
+
         #work path
-        self.output_path = os.path.join(utils.data_path(), self.platform, self.producttype)        
-        if not os.path.isdir(self.output_path):
-            os.makedirs(self.output_path)
+        self.output_path = os.path.join(utils.load_data_path(), self.platform, self.producttype)
+        os.makedirs(self.output_path, exist_ok=True)
         
         #ESA APIs
         self.api_url = 'https://catalogue.dataspace.copernicus.eu/odata/v1/Products?'
         self.credentials = utils.load_credentials()['sentinel']
+        
+        # Open the request session
+        self.session = requests.Session()
         
     def get_keycloak(self):
         data = {
@@ -83,11 +86,9 @@ class download:
             data=data,
             )
             r.raise_for_status()
-        except Exception as e:
-            raise Exception(
-                f"Keycloak token creation failed. Reponse from the server was: {r.json()}"
-                )
-        return r.json()["access_token"]
+            return r.json().get("access_token")
+        except requests.exceptions.RequestException as e:
+            raise Exception(f"Keycloak token creation failed: {e}")    
     
     def search(self, omit_corners=True):
 
@@ -106,49 +107,40 @@ class download:
 
         # Parse the response
         json_feed = response.json()
-
-        # # Remove results that are mainly corners
-        # def keep(r):
-        #     for item in r['str']:
-        #         if item['name'] == 'size':
-        #             units = item['content'].split(' ')[1]
-        #             mult = {'KB': 1, 'MB': 1e3, 'GB': 1e6}[units]
-        #             size = float(item['content'].split(' ')[0]) * mult
-        #             break
-        #     if size > 0.5e6:  # 500MB
-        #         return True
-        #     else:
-        #         return False
-        results = pd.DataFrame.from_dict(json_feed['value'])
-        print('Retrieving {} results \n'.format(len(results)))
-
-        return results
+        if "value" not in json_feed:
+            raise ValueError("No results found in response.")
+        return pd.DataFrame.from_dict(json_feed['value'])
     
     def download(self):
-        
+
         keycloak_token = self.get_keycloak()
+        
+
+        #results of the search
+        results = self.search()
+        
         session = requests.Session()
         session.headers.update({'Authorization': f'Bearer {keycloak_token}'})
         print("Authorized OK")
 
-        #results of the search
-        results = self.search()
+        if results.empty:
+            print("No products found.")
+            return [], []
+
         downloaded, pending= [], []
-        
+        print('Retrieving {} results \n'.format(len(results)))
         for index, row in results.iterrows():
-            print(f"Product online? {row['Online']}")            
-            if row['Online'] and (self.producttype):
-                url = "https://catalogue.dataspace.copernicus.eu/odata/v1/Products(%s)/$value" % row['Id']
-                if self.platform == 'SENTINEL-2':
-                    tile_path = os.path.join(self.output_path, row['Name'])
-                elif self.platform == 'SENTINEL-3':
-                    tile_path = os.path.join(self.output_path, row['Name'])
-                if os.path.isdir(tile_path):
+            if row['Online']:
+
+                print(f"Product {row['Name']} online")
+                tile_path = os.path.join(self.output_path, row['Name'])
+                if os.path.exists(tile_path):
                     print ('Already downloaded \n')
-                    break
-                print(f"Downloading {url}")
+                    downloaded.append(row['Name'])
+                    continue  # Skip to the next iteration
+
+                url = "https://catalogue.dataspace.copernicus.eu/odata/v1/Products(%s)/$value" % row['Id']
                 response = session.head(url, allow_redirects=False)
-                print("After head")
                 if response.status_code in (301, 302, 303, 307):
                     url = response.headers['Location']
                     print(url)
@@ -180,7 +172,6 @@ class download:
 
                     downloaded.append(row['Name'])
 
-                    print('Downloading {} ... \n'.format(row['Name']))
                     print(f"Saving in... {tile_path}")
 
                     utils.open_compressed(byte_stream=data,

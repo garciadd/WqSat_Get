@@ -1,0 +1,6 @@
+start_date = 2023-09-10
+end_date = 2023-09-15
+coordinates = [-2.830,41.910,-2.690,41.820]
+platform = SENTINEL-2
+product_type = S2MSI1C
+cloud = 90
