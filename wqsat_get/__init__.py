@@ -1,2 +1,2 @@
 """Initialize module"""
-# wqsat_dl/__init__.py
+# wqsat_get/__init__.py

@@ -8,3 +8,6 @@ regions.yaml
 # Ignorar archivos .pyc y carpetas __pycache__
 *.pyc
 __pycache__/
+
+# Ignorar entornos virtuales
+.venv/

@@ -4,8 +4,8 @@ import datetime
 import argparse
 
 # Subfunctions
-from wqsat_dl import utils
-from wqsat_dl import sentinel_dl
+from wqsat_get import utils
+from wqsat_get import sentinel_dl
 
 def main():
 

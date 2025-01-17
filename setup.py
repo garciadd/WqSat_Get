@@ -4,7 +4,7 @@ with open('requirements.txt') as f:
     reqs = f.read().splitlines()
 
 setup(
-    name='wqsat_dl',
+    name='wqsat_get',
     packages=find_packages(),
     version='0.1.0',
     description='Python package for downloading satellite images for water quality monitoring.',

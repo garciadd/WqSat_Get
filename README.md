@@ -1,8 +1,7 @@
-# WqSat_get: A Python Package for Satellite Image Download
+# WqSat_Get: A Python Package for Satellite Image Download
 ## Overview
-WqSat_get is a Python package designed for efficient downloading of satellite images from Sentinel-2 and Sentinel-3 platforms. The package simplifies the process of querying, filtering, and downloading high-resolution satellite imagery using the Copernicus Open Access Hub API. It also supports execution via the command line.
+WqSat_Get is a Python package designed for efficient downloading of satellite images from Sentinel-2 and Sentinel-3 platforms. The package simplifies the process of querying, filtering, and downloading high-resolution satellite imagery using the Copernicus Open Access Hub API. It also supports execution via the command line.
 
-—
 ## Authors
 Daniel García-Díaz & Fernando Aguilar
 Email: (garciad & aguilarf) @ifca.unican.es
@@ -15,20 +14,19 @@ Advanced Computing and e-Science
 * **Command Line Integration**: Run the package directly from the command line using configuration files.
 * **Progress Tracking**: Integrated progress bars with `tqdm` for an enhanced user experience.
 
-—
 ## Installation
-To install **WqSat-get**, clone the repository and install the dependencies using `pip`:
+To install **WqSat-Get**, clone the repository and install the dependencies using `pip`:
 ```
 # Clone the repository
-git clone https://github.com/yourusername/wqsat-dl.git
+git clone https://github.com/garciadd/WqSat_Get.git
 
 # Navigate to the package directory
-cd wqsat-dl
+cd WqSat_Get
 
 # Install the package
 pip install .
 ```
-—
+
 ## Dependencies
 Ensure the following Python libraries are installed:
 * numpy
@@ -41,7 +39,7 @@ To install all required dependencies, use:
 ```
 pip install -r requirements.txt
 ```
-—
+
 ## Cedentials
 To use this package, you need to be registered on the [Copernicus Data Space Ecosystem](https://dataspace.copernicus.eu/). Registration is free and allows access to the required APIs. Once registered, you must create a \`credentials.yaml\` file in your working directory containing your login credentials. The file should be structured as follows:
 ```
@@ -51,15 +49,14 @@ sentinel:
 ```
 For detailed examples on how to create and update the `credentials.yaml` file programmatically, refer to the **Config** notebook included in the repository.
 
-—
 ## Usage
 ### 1. From Python
 Example: Downloading Sentinel-2 Images
 ```
 import datetime
 
-from wqsat_dl import utils
-from wqsat_dl.sentinel_dl import download
+from wqsat_get import utils
+from wqsat_get.sentinel_dl import download
 
 # Define the query parameters
 params = {
@@ -94,7 +91,7 @@ cloud 20
 ```
 Run the command:
 ```
-python3 wqsat_dl.py -d config.txt
+python3 wqsat_get.py -d config.txt
 ```
 —
 ## Error Handling

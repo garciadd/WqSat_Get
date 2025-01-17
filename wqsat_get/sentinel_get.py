@@ -26,7 +26,7 @@ import pandas as pd
 from tqdm import tqdm
 
 # Subfunctions
-from wqsat_dl import utils
+from wqsat_get import utils
 
 
 class download:
