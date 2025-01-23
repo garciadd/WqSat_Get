@@ -19,7 +19,6 @@ Date: Apr 2023
 """
 
 #imports apis
-import datetime
 import requests
 import os
 import pandas as pd
@@ -29,7 +28,7 @@ from tqdm import tqdm
 from wqsat_get import utils
 
 
-class download:
+class Download:
 
     def __init__(self, start_date, end_date, coordinates, platform, product_type, cloud=100):
         """
@@ -75,6 +74,7 @@ class download:
         self.session = requests.Session()
         
     def get_keycloak(self):
+        url = "https://identity.dataspace.copernicus.eu/auth/realms/CDSE/protocol/openid-connect/token"
         data = {
             "client_id": "cdse-public",
             "username": self.credentials['user'],
@@ -82,9 +82,7 @@ class download:
             "grant_type": "password",
             }
         try:
-            r = requests.post("https://identity.dataspace.copernicus.eu/auth/realms/CDSE/protocol/openid-connect/token",
-            data=data,
-            )
+            r = requests.post(url, data=data)
             r.raise_for_status()
             return r.json().get("access_token")
         except requests.exceptions.RequestException as e:

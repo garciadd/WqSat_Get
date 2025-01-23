@@ -1,9 +1,10 @@
 import os
 import io
-from werkzeug.exceptions import BadRequest
 import yaml
 import tarfile
 import zipfile
+import datetime
+import ast  # To safely evaluate strings into Python literals (lists, dicts, etc.)
 
 def base_dir():
     """Returns the base directory where config.yaml is stored."""
@@ -13,57 +14,61 @@ def config_path():
     """Returns the full path of the config.yaml file."""
     return os.path.join(base_dir(), 'config.yaml')
 
-def create_config(landsat_user=None, landsat_password=None, sentinel_user=None, sentinel_password=None, data_path=None):
-    """Creates or initializes the config.yaml file."""
-    # Default values
-    landsat_user = landsat_user or '*****'
-    landsat_password = landsat_password or '*****'
-    sentinel_user = sentinel_user or '*****'
-    sentinel_password = sentinel_password or '*****'
-    data_path = data_path or os.path.join(os.path.dirname(base_dir()), 'data')
+def regions_path():
+    """Returns the full path of the regions.yaml file."""
+    return os.path.join(base_dir(), 'regions.yaml')
 
-    # Structure of the config
-    data = {
-        'credentials': {
-            'landsat': {'user': landsat_user, 'password': landsat_password},
-            'sentinel': {'user': sentinel_user, 'password': sentinel_password},
-        },
-        'data_path': data_path,
-    }
+def save_config(landsat_user=None, landsat_password=None, sentinel_user=None, sentinel_password=None, data_path=None):
+    """
+    Creates or updates the config.yaml file. If the file already exists, updates
+    only the fields provided while preserving existing values.
+    
+    Args:
+        landsat_user (str, optional): Landsat username.
+        landsat_password (str, optional): Landsat password.
+        sentinel_user (str, optional): Sentinel username.
+        sentinel_password (str, optional): Sentinel password.
+        data_path (str, optional): Path to the data directory.
+    """
 
-    # Write the YAML file
-    with open(config_path(), 'w') as file:
-        yaml.dump(data, file, default_flow_style=False)
-    print("Config file created successfully.")
-
-def update_config(landsat_user=None, landsat_password=None, sentinel_user=None, sentinel_password=None, data_path=None):
-    """Updates specific values in the config.yaml file."""
-    # Try to load existing config or start fresh if not present
     try:
+        # Load the existing configuration, if it exists
         with open(config_path(), 'r') as file:
             data = yaml.safe_load(file) or {}
     except FileNotFoundError:
-        data = {}
+        data = {}  # Start with an empty config if the file does not exist
 
-    # Update credentials if provided
+    # Ensure default structure for credentials
     data.setdefault('credentials', {})
+    landsat_config = data['credentials'].setdefault('landsat', {})
+    sentinel_config = data['credentials'].setdefault('sentinel', {})
+
+    # Update values only if new ones are provided
     if landsat_user is not None:
-        data['credentials'].setdefault('landsat', {})['user'] = landsat_user
+        landsat_config['user'] = landsat_user
     if landsat_password is not None:
-        data['credentials'].setdefault('landsat', {})['password'] = landsat_password
+        landsat_config['password'] = landsat_password
     if sentinel_user is not None:
-        data['credentials'].setdefault('sentinel', {})['user'] = sentinel_user
+        sentinel_config['user'] = sentinel_user
     if sentinel_password is not None:
-        data['credentials'].setdefault('sentinel', {})['password'] = sentinel_password
+        sentinel_config['password'] = sentinel_password
 
     # Update data path if provided
     if data_path is not None:
         data['data_path'] = data_path
 
+    # If the file does not exist, ensure default values for missing fields
+    if not os.path.exists(config_path()):
+        landsat_config.setdefault('user', '*****')
+        landsat_config.setdefault('password', '*****')
+        sentinel_config.setdefault('user', '*****')
+        sentinel_config.setdefault('password', '*****')
+        data.setdefault('data_path', '*****')
+
     # Save the updated data back to the file
     with open(config_path(), 'w') as file:
         yaml.dump(data, file, default_flow_style=False)
-    print("Config file updated successfully.")
+    print("Config file saved successfully.")
 
 def load_credentials():
     """Loads and returns the credentials from the config.yaml file."""
@@ -76,54 +81,47 @@ def load_credentials():
         return {}
     
 def load_data_path():
-    """Loads and returns the data path from the config.yaml file. Creates the directory if it doesn't exist."""
+    """
+    Loads and returns the data path from the config.yaml file. Creates the directory if it doesn't exist.
+    Raises an error if the directory cannot be created.
+    """
     try:
         with open(config_path(), 'r') as file:
             data = yaml.safe_load(file)
             data_path = data.get('data_path', None)
+            print(f"Directory {data_path} set as data_path")
 
             # Ensure the directory exists
-            if data_path and not os.path.exists(data_path):
-                os.makedirs(data_path)
-                print(f"Directory '{data_path}' created.")
+            if data_path:
+                if not os.path.exists(data_path):
+                    try:
+                        os.makedirs(data_path)
+                        print(f"Directory '{data_path}' created.")
+                    except Exception as e:
+                        raise OSError(f"Failed to create the directory '{data_path}': {e}")
 
             return data_path
+        
     except FileNotFoundError:
         print("Error: 'config.yaml' file not found.")
         return None
-    
-def create_regions(region='Santander', W=-4.0, S=43.3, E=-3.7, N=43.5):
-    """Create a YAML file (regions.yaml) with a region and its coordinates.
-    
-    Parameters:
-        region_name (str): The name of the region. Defaults to 'Santander'.
-        W (float): The West coordinate. Defaults to -4.0 (for Santander).
-        S (float): The South coordinate. Defaults to 43.3 (for Santander).
-        E (float): The East coordinate. Defaults to -3.7 (for Santander).
-        N (float): The North coordinate. Defaults to 43.5 (for Santander).
-    """
-    # Prepare the data to write into the YAML file
-    data = {region: {'W': W, 'S': S, 'E': E, 'N': N}}
-
-    # Write the YAML file
-    with open(os.path.join(base_dir(), 'regions.yaml'), 'w') as file:
-        yaml.dump(data, file, default_flow_style=False)
-    print(f"File 'regions.yaml' created successfully with region '{region}'.")
+    except Exception as e:
+        raise RuntimeError(f"An unexpected error occurred: {e}")
 
 def update_regions(region, W, S, E, N):
     """Update the YAML file (regions.yaml) with new region and its coordinates."""
     # Load the current data from the file
     try:
-        with open(os.path.join(base_dir(), 'regions.yaml'), 'r') as file:
-            data = yaml.safe_load(file)
+        with open(regions_path(), 'r') as file:
+            data = yaml.safe_load(file) or {}
     except FileNotFoundError:
         data = {}
 
-    # Add new region
+    # Add new region or update if already exists
     data[region] = {'W': W, 'S': S, 'E': E, 'N': N}
 
     # Save the updated data back to the file
-    with open(os.path.join(base_dir(), 'regions.yaml'), 'w') as file:
+    with open(regions_path(), 'w') as file:
         yaml.dump(data, file, default_flow_style=False)
     print(f"Region '{region}' added successfully.")
 
@@ -131,7 +129,7 @@ def get_regions():
     """Show all regions stored in the YAML file (regions.yaml)."""
     # Load the data from the file
     try:
-        with open(os.path.join(base_dir(), 'regions.yaml'), 'r') as file:
+        with open(regions_path(), 'r') as file:
             data = yaml.safe_load(file)
         print(f"Regions in the file: {data.keys()}")
     except FileNotFoundError:
@@ -141,7 +139,7 @@ def get_coordinates(region):
     """Load the coordinates (W, S, E, N) of a specific region."""
     # Load the data from the file
     try:
-        with open(os.path.join(base_dir(), 'regions.yaml'), 'r') as file:
+        with open(regions_path(), 'r') as file:
             data = yaml.safe_load(file)
         if region in data:
             return data[region]
@@ -183,3 +181,145 @@ def open_compressed(byte_stream, file_format, output_folder, file_path=None):
         zf.extractall(output_folder)
     else:
         raise ValueError('Invalid file format for the compressed byte_stream')
+    
+def parse_txt_to_dict(file_path):
+    """
+    Parses a custom text file into a dictionary.
+    Supports optional commas at the end of lines and values with or without quotes.
+    
+    Args:
+        file_path (str): Path to the text file to be parsed.
+    
+    Returns:
+        dict: A dictionary with the parsed key-value pairs.
+    
+    Raises:
+        ValueError: If the file format is invalid or parsing fails.
+        FileNotFoundError: If the file does not exist.
+        Handles lists and coordinate arrays properly.
+    """
+
+    config = {}
+    try:
+        with open(file_path, 'r') as file:
+            for line in file:
+                # Strip whitespace and ignore comments or empty lines
+                line = line.strip()
+                if not line or line.startswith('#'):
+                    continue
+
+                # Split on the first colon
+                if ':' not in line:
+                    raise ValueError(f"Invalid line format: '{line}' (missing ':')")
+                key, value = line.split(':', 1)
+
+                # Clean and process key-value pairs
+                key = key.strip()
+                value = value.strip().rstrip(',')
+
+                # Remove surrounding quotes if present
+                if value.startswith(("'", '"')) and value.endswith(("'", '"')):
+                    value = value[1:-1]
+
+                # Convert lists, coordinates, or other literals using ast.literal_eval
+                try:
+                    value = ast.literal_eval(value)
+                except (ValueError, SyntaxError):
+                    pass  # Leave value as a string if it's not a valid literal
+                
+                # Add the key-value pair to the dictionary
+                config[key] = value
+    except FileNotFoundError:
+        raise FileNotFoundError(f"The file {file_path} was not found.")
+    except Exception as e:
+        raise ValueError(f"Error parsing the file: {e}")
+
+    return config
+
+def process_coordinates(W, N, E, S):
+    """Process the coordinates to validate and return them as standard Python floats."""
+    # Convert to float using Python's standard float
+    W, N, E, S = float(W), float(N), float(E), float(S)
+
+    latitude_range = [-90, 90]  # Valid range for latitude
+    longitude_range = [-180, 180]  # Valid range for longitude
+    
+    # Validate that North is greater than South
+    if not N > S:
+        raise ValueError("The north coordinate must be greater than the south coordinate")
+
+    # Validate that West is less than East
+    if not W < E:
+        raise ValueError("The west coordinate must be less than the east coordinate")
+
+    # Validate coordinates are within valid range
+    if not (latitude_range[0] <= N <= latitude_range[1] and
+            latitude_range[0] <= S <= latitude_range[1] and
+            longitude_range[0] <= W <= longitude_range[1] and
+            longitude_range[0] <= E <= longitude_range[1]):
+        raise ValueError("Coordinates are out of valid range")
+
+    return W, N, E, S
+
+def validate_download_config(args):
+    """
+    Validate the configuration for satellite image download.
+    
+    Args:
+        data (dict): Configuration dictionary parsed from the workflow file.
+    
+    Returns:
+        dict: Validated and possibly augmented configuration.
+    
+    Raises:
+        ValueError: If critical fields are invalid and no tiles are provided.
+    """
+        
+    # Validate platform
+    platform = args.get['platform']
+    if platform not in ['SENTINEL-2', 'SENTINEL-3']:
+        raise ValueError(f"Invalid platform: {platform}. Valid options are 'SENTINEL-2', 'SENTINEL-3'.")
+
+    # Validate product_type
+    product_type = args.get['product_type']
+    if platform == 'SENTINEL-2' and product_type not in ['S2MSI1C', 'S2MSI2A']:
+        raise ValueError(f"Invalid product type for {platform}: {product_type}. Valid options are 'S2MSI1C', 'S2MSI2A'.")
+    elif platform == 'SENTINEL-3' and product_type not in ['OL_1_EFR___', 'OL_1_ERR___']:
+        raise ValueError(f"Invalid product type for {platform}: {product_type}. Valid options are 'OL_1_EFR___', 'OL_1_ERR___'.")
+
+    # Validate start_date and end_date
+    try:
+        start_date = datetime.datetime.strptime(args.get['start_date'], "%Y-%m-%d")
+        end_date = datetime.datetime.strptime(args.get['end_date'], "%Y-%m-%d")
+        if end_date <= start_date:
+            raise ValueError("The end date must be after the start date.")
+    except ValueError:
+        raise ValueError("'start_date' and 'end_date' must be in the format YYYY-MM-DD.")
+    
+    # Validate region or coordinates
+    coordinates = args.get("coordinates")
+    region = args.get("region")
+    if not coordinates and not region:
+        raise ValueError("Either 'coordinates' or 'region' must be provided.")
+    if coordinates:
+        if not isinstance(coordinates, list) or len(coordinates) != 4:
+            raise ValueError("'coordinates' must be a list of 4 values [W, S, E, N].")
+        try:
+            # Process and validate coordinates
+            args["coordinates"] = process_coordinates(*coordinates)
+        except ValueError as e:
+            raise ValueError(f"Invalid coordinates: {e}")
+    elif region:
+        coordinates = get_coordinates(region)
+        if not coordinates:
+            raise ValueError(f"Region '{region}' not found in regions.yaml.")
+        args["coordinates"] = coordinates  # Prioritize region-derived coordinates
+
+    # Validate cloud and set default
+    cloud = args.get("cloud")
+    if cloud is None:
+        args["cloud"] = 100  # Default value
+    elif not isinstance(cloud, int) or not (0 <= cloud <= 100):
+        raise ValueError("'cloud' must be an integer between 0 and 100.")
+    
+    return args

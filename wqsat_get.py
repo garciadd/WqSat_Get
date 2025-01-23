@@ -1,108 +1,142 @@
-import os, sys
-import numpy as np
+import sys
 import datetime
 import argparse
 
 # Subfunctions
+from wqsat_get import sentinel_get
 from wqsat_get import utils
-from wqsat_get import sentinel_dl
 
 def main():
 
     parser = argparse.ArgumentParser(description='Python package for downloading satellite images')
 
-    # '--download' o '-d' file with details to download images
-    parser.add_argument('--download', '-d', type=str, help='Download file path to process')
+    # Set credentials and data path
+    parser.add_argument('--config', '-c', type=str, help='Path to configuration file')
+
+    # Region management
+    parser.add_argument('--regions', '-r', type=str, help='Path to file for setting up regions.yaml')
+
+    # Download satellite images
+    parser.add_argument('--download', '-d', type=str, help='Path to the file with the download variables')
+    
     # Parse command line arguments
     args = parser.parse_args()
 
     try:
-        if args.download:
-            print(f'Processing the file: {args.download}')
-            download_args = process_download_file(args.download)
-            print(download_args)
-
-            #download sentinel files
-            s2 = sentinel_dl.download(**download_args)
-            downloaded, pending = s2.download()
-            print(f'downloaded images: {downloaded} \n')
-
+        if args.config:
+            setup_config(args.config)
+        elif args.regions:
+            setup_regions(args.regions)
+        elif args.download:
+            setup_download(args.download)
+        else:
+            print("You must provide at least one flag: --config (-c), --regions (-r), or --download (-d)")
+            sys.exit(1)
     except Exception as e:
         print(f'Error: {e}')
         sys.exit(1)
 
-def process_download_file(download):
-
-    args = {'start_date': "",
-            'end_date': "",
-            'coordinates': "",
-            'platform': "",
-            'product_type': "",
-            'cloud': ""}
-
+def setup_config(config_file):
+    """
+    Creates or updates the config.yaml file based on the input provided
+    in a configuration file (config_file). Delegates the actual creation
+    or update logic to save_config.
+    
+    Args:
+        config_file (str): Path to the text file containing configuration variables.
+    
+    Raises:
+        FileNotFoundError: If the config_file does not exist.
+        ValueError: If the file has formatting errors or invalid fields.
+    """
     try:
-        with open(download, 'r') as file:
-            for line in file:
-                words = line.split(' ')
-                if words[0].startswith("#"):
-                    continue
-                elif not words[0] in list(args.keys()):
-                    raise ValueError(f"{words[0]} is not a valid download setting")
-                else:
-                    if words[0] in ['start_date', 'end_date']:
-                        try:
-                            args[words[0]] = datetime.datetime.strptime(words[-1].strip(), "%Y-%m-%d")
-                        except ValueError as e:
-                            raise ValueError(f'The date {words[-1]} is not in the correct format. Please, use "Y-m-d"')
-                    elif words[0] == 'coordinates':
-                        W, N, E, S = process_coordinates(words[-1])
-                        args[words[0]] = {"W": np.round(W,4), "N": np.round(N,4), "E": np.round(E,4), "S": np.round(S,4)}
-                    elif words[0] == 'cloud':
-                        args[words[0]] = np.uint(words[-1])
-                    else:
-                        args[words[0]] = words[-1].strip()
-                        
-    except FileNotFoundError as e:
-        # Exception if file not found
-        raise FileNotFoundError(f'The file {download} was not found...')
+        # Parse the provided configuration file using the parse_txt_to_dict function
+        config_data = utils.parse_txt_to_dict(config_file)
 
-    if args['end_date'] <= args['start_date']:
-        raise ValueError("The end date must be after the start date")
-    if not args['platform'] in ['SENTINEL-2', 'SENTINEL-3']:
-        raise ValueError(f"{args['platform']} is not valid platform. Please use SENTINEL-2 or SENTINEL-3")
-    elif args['platform'] == 'SENTINEL-2':
-        if not args['product_type'] in ['S2MSI1C', 'S2MSI2A']:
-            raise ValueError(f"{args['product_type']} is not valid product type for Sentinel-2")
-    elif args['platform'] == 'SENTINEL-3':
-        if not args['product_type'] in ['OL_1_EFR___', 'OL_1_ERR___']:
-            raise ValueError(f"{args['product_type']} is not valid product type for Sentinel-3")
-
-    return args
-
-def process_coordinates(coord):
+        # Save or update the configuration file
+        utils.save_config(
+            landsat_user=config_data.get('landsat_user'),
+            landsat_password=config_data.get('landsat_password'),
+            sentinel_user=config_data.get('sentinel_user'),
+            sentinel_password=config_data.get('sentinel_password'),
+            data_path=config_data.get('data_path'),
+        )
+    except FileNotFoundError:
+        raise FileNotFoundError(f"The file {config_file} was not found.")
+    except ValueError as e:
+        raise ValueError(f"Error processing the file {config_file}: {e}")
     
-    coord = coord.split(',')
-    W, N, E, S = np.float32(coord[0][1:]), np.float32(coord[1]), np.float32(coord[2]), np.float32(coord[-1][:-2])
-
-    latitude_range = [-90, 90]  # Valid range for latitude
-    longitude_range = [-180, 180]  # Valid range for longitude
+def setup_regions(regions_file):
+    """
+    Reads region data from a regions.txt file, parses the data, 
+    and creates or updates the region in the regions.yaml file.
     
-    # test Norte > Sur
-    if not N > S:
-        raise ValueError("The north coordinate must be greater than the south coordinate")
+    Args:
+        regions_file (str): Path to the regions text file.
+    """
+    try:
+        # Parse the region data from the file
+        region_data = utils.parse_txt_to_dict(regions_file)
 
-    # test Oeste < Este
-    if not W < E:
-        raise ValueError("The west coordinate must be less than the east coordinate")
+        # Check if all coordinates are present
+        if 'W' not in region_data or 'S' not in region_data or 'E' not in region_data or 'N' not in region_data:
+            raise ValueError("Missing one or more coordinates (W, S, E, N) in the region data.")
 
-    # test of range
-    if not (latitude_range[0] <= N <= latitude_range[1] and
-            latitude_range[0] <= S <= latitude_range[1] and
-            longitude_range[0] <= W <= longitude_range[1] and
-            longitude_range[0] <= E <= longitude_range[1]):
-        raise ValueError("Coordinates are out of valid range")
+        # Validate and process the coordinates
+        W, N, E, S = utils.process_coordinates(region_data['W'], region_data['N'], region_data['E'], region_data['S'])
+        # Update or create the region
+        utils.update_regions('region', W, S, E, N)
 
-    return W, N, E, S
+    except FileNotFoundError:
+        raise FileNotFoundError(f"The regions file {regions_file} was not found.")
+    except ValueError as e:
+        raise ValueError(f"Error processing the region file: {e}")
+    
+def setup_download(download_file):
+    """
+    Main function to set up and execute the download of satellite images.
+    
+    Args:
+        download_file (str): Path to the download configuration file.
+    
+    Raises:
+        FileNotFoundError: If the download file does not exist.
+        ValueError: If there are issues in parsing or validation.
+    """
+    try:
+        # Parse the download data from the file
+        data = utils.parse_txt_to_dict(download_file)
+
+        # Validate download-specific fields
+        try:
+            validated_data = utils.validate_download_config(data)
+
+            downloader = sentinel_get.Download(
+                start_date=datetime.strptime(validated_data["start_date"], "%Y-%m-%d"),
+                end_date=datetime.strptime(validated_data["end_date"], "%Y-%m-%d"),
+                coordinates={
+                    "W": validated_data["coordinates"][0],
+                    "S": validated_data["coordinates"][1],
+                    "E": validated_data["coordinates"][2],
+                    "N": validated_data["coordinates"][3],
+                },
+                platform=validated_data["platform"],
+                product_type=validated_data["product_type"],
+                cloud=validated_data["cloud"]
+            )
+            downloaded_tiles, pending_tiles = downloader.download()
+
+            if pending_tiles:
+                print(f"Pending tiles not available for download: {pending_tiles}")
+
+        except ValueError as e:
+            print(f"Download validation failed: {e}")
+            downloaded_tiles = []
+
+        return downloaded_tiles, pending_tiles
+
+    except (FileNotFoundError, ValueError) as e:
+        raise ValueError(f"Download Error: {e}")
             
 if __name__ == "__main__":
     main()
