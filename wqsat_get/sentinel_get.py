@@ -18,20 +18,20 @@ Advanced Computing and e-Science
 Date: Apr 2023
 """
 
-#imports apis
 import requests
 import os
 import pandas as pd
 from tqdm import tqdm
-
-# Subfunctions
 from wqsat_get import utils
 
 
 class Download:
 
-    def __init__(self, start_date, end_date, coordinates, platform, product_type, cloud=100):
+    def __init__(self, start_date=None, end_date=None, coordinates=None, platform=None, product_type=None, tile=None, tiles_list=None, cloud=100):
         """
+        Initializes the Download class with the provided parameters.
+        Depending on the input parameters, the search method will be determined.
+        
         Parameters
         ----------
         inidate : Initial date of the query in format: datetime.strptime "%Y-%m-%dT%H:%M:%SZ"
@@ -58,22 +58,25 @@ class Download:
         self.producttype = product_type
         self.cloud = int(cloud)
         self.coord = coordinates
+        self.tiles_list = tiles_list
+        self.tile = tile
 
-        if not all(key in self.coord for key in ['W', 'S', 'E', 'N']):
-            raise ValueError("Coordinates must include 'W', 'S', 'E', and 'N'.")
-
-        #work path
-        self.output_path = os.path.join(utils.load_data_path(), self.platform, self.producttype)
+        ## Define output path for downloads
+        self.output_path = utils.load_data_path()
         os.makedirs(self.output_path, exist_ok=True)
         
-        #ESA APIs
+        # Set up API and credentials
         self.api_url = 'https://catalogue.dataspace.copernicus.eu/odata/v1/Products?'
-        self.credentials = utils.load_credentials()['sentinel']
+        self.credentials = utils.load_credentials().get('sentinel', {})
+        if not self.credentials:
+            raise ValueError("Missing Sentinel API credentials in credentials.yaml")
         
         # Open the request session
         self.session = requests.Session()
         
     def get_keycloak(self):
+        """Retrieves an authentication token from the Keycloak authentication service."""
+
         url = "https://identity.dataspace.copernicus.eu/auth/realms/CDSE/protocol/openid-connect/token"
         data = {
             "client_id": "cdse-public",
@@ -82,108 +85,143 @@ class Download:
             "grant_type": "password",
             }
         try:
-            r = requests.post(url, data=data)
-            r.raise_for_status()
-            return r.json().get("access_token")
+            response = requests.post(url, data=data)
+            response.raise_for_status()
+            return response.json().get("access_token")
         except requests.exceptions.RequestException as e:
-            raise Exception(f"Keycloak token creation failed: {e}")    
+            raise Exception(f"Keycloak token creation failed: {e}")
+
+    def search(self):
+        """Determines which search method to use based on the input parameters."""
+
+        if self.tile:
+            return self.search_by_name()
+        elif self.tiles_list:
+            return self.search_by_list()
+        else:
+            return self.search_by_parameters()
     
-    def search(self, omit_corners=True):
+    def search_by_name(self):
+        """Searches for a single product by its name."""
 
-        # Post the query to Copernicus
-        footprint = 'POLYGON(({0} {1},{2} {1},{2} {3},{0} {3},{0} {1}))'.format(self.coord['W'],
-                                                                                self.coord['S'],
-                                                                                self.coord['E'],
-                                                                                self.coord['N'])
-        if self.platform == 'SENTINEL-2':
-            url_query = f"https://catalogue.dataspace.copernicus.eu/odata/v1/Products?$filter=Collection/Name eq '{self.platform}' and OData.CSC.Intersects(area=geography'SRID=4326;{footprint}') and ContentDate/Start gt {self.start_date} and ContentDate/Start lt {self.end_date} and Attributes/OData.CSC.DoubleAttribute/any(att:att/Name eq 'cloudCover' and att/OData.CSC.DoubleAttribute/Value lt {self.cloud}) and Attributes/OData.CSC.StringAttribute/any(att:att/Name eq 'productType' and att/OData.CSC.StringAttribute/Value eq '{self.producttype}')"
-        elif self.platform == 'SENTINEL-3':
-            url_query = f"https://catalogue.dataspace.copernicus.eu/odata/v1/Products?$filter=Collection/Name eq '{self.platform}' and OData.CSC.Intersects(area=geography'SRID=4326;{footprint}') and ContentDate/Start gt {self.start_date} and ContentDate/Start lt {self.end_date} and Attributes/OData.CSC.StringAttribute/any(att:att/Name eq 'productType' and att/OData.CSC.StringAttribute/Value eq '{self.producttype}')"
+        url_query = f"https://catalogue.dataspace.copernicus.eu/odata/v1/Products?$filter=Name eq '{self.tile}'"
         response = self.session.get(url_query)
-
         response.raise_for_status()
 
         # Parse the response
         json_feed = response.json()
+
         if "value" not in json_feed:
             raise ValueError("No results found in response.")
+        
+        return pd.DataFrame.from_dict(json_feed['value'])
+    
+    def search_by_list(self):
+        """Searches for multiple products using a list of product names."""
+
+        url = "https://catalogue.dataspace.copernicus.eu/odata/v1/Products/OData.CSC.FilterList"
+        payload = {"FilterProducts": [{"Name": name} for name in self.tiles_list]}
+        headers = {'Content-Type': 'application/json'}
+        
+        response = self.session.post(url, json=payload, headers=headers)
+        response.raise_for_status()
+
+        # Parse the response
+        json_feed = response.json()
+        
+        if "value" not in json_feed:
+            raise ValueError("No results found in response.")
+        
+        return pd.DataFrame.from_dict(json_feed['value'])
+    
+    def search_by_parameters(self):
+        """Searches for products based on date range, coordinates, platform, and product type."""
+
+        if not all([self.start_date, self.end_date, self.coord, self.platform, self.producttype]):
+            raise ValueError("Missing required parameters for search by parameters.")
+
+        # Create the spatial query footprint
+        footprint = 'POLYGON(({0} {1},{2} {1},{2} {3},{0} {3},{0} {1}))'.format(self.coord['W'],
+                                                                                self.coord['S'],
+                                                                                self.coord['E'],
+                                                                                self.coord['N'])
+
+        # Construct the API query
+        if self.platform == 'SENTINEL-2':
+            url_query = (f"https://catalogue.dataspace.copernicus.eu/odata/v1/Products?$filter=Collection/Name eq '{self.platform}' and "
+            f"OData.CSC.Intersects(area=geography'SRID=4326;{footprint}') and "
+            f"ContentDate/Start gt {self.start_date} and ContentDate/Start lt {self.end_date} and "
+            f"Attributes/OData.CSC.DoubleAttribute/any(att:att/Name eq 'cloudCover' and att/OData.CSC.DoubleAttribute/Value lt {self.cloud}) and "
+            f"Attributes/OData.CSC.StringAttribute/any(att:att/Name eq 'productType' and att/OData.CSC.StringAttribute/Value eq '{self.producttype}')")
+        
+        elif self.platform == 'SENTINEL-3':
+            url_query = (f"https://catalogue.dataspace.copernicus.eu/odata/v1/Products?$filter=Collection/Name eq '{self.platform}' and "
+            f"OData.CSC.Intersects(area=geography'SRID=4326;{footprint}') and "
+            f"ContentDate/Start gt {self.start_date} and ContentDate/Start lt {self.end_date} and "
+            f"Attributes/OData.CSC.StringAttribute/any(att:att/Name eq 'productType' and att/OData.CSC.StringAttribute/Value eq '{self.producttype}')")
+        
+        # Execute the API request
+        response = self.session.get(url_query)
+        response.raise_for_status()
+
+        # Parse the response
+        json_feed = response.json()
+
+        if "value" not in json_feed:
+            raise ValueError("No results found in response.")
+        
         return pd.DataFrame.from_dict(json_feed['value'])
     
     def download(self):
+        """Downloads the products obtained from the search query."""
 
         keycloak_token = self.get_keycloak()
-        
-
-        #results of the search
         results = self.search()
         
-        session = requests.Session()
-        session.headers.update({'Authorization': f'Bearer {keycloak_token}'})
-        print("Authorized OK")
-
         if results.empty:
             print("No products found.")
             return [], []
-
-        downloaded, pending= [], []
+        
+        session = requests.Session()
+        session.headers.update({'Authorization': f'Bearer {keycloak_token}'})
+        
+        downloaded, pending = [], []
         print('Retrieving {} results \n'.format(len(results)))
-        for index, row in results.iterrows():
-            if row['Online']:
-
-                print(f"Product {row['Name']} online")
-                tile_path = os.path.join(self.output_path, row['Name'])
-                if os.path.exists(tile_path):
-                    print ('Already downloaded \n')
-                    downloaded.append(row['Name'])
-                    continue  # Skip to the next iteration
-
-                url = "https://catalogue.dataspace.copernicus.eu/odata/v1/Products(%s)/$value" % row['Id']
-                response = session.head(url, allow_redirects=False)
-                if response.status_code in (301, 302, 303, 307):
-                    url = response.headers['Location']
-                    print(url)
-                    #response = session.get(url, allow_redirects=False)
-                response = session.get(url, stream=True)
-
-                print(f"Status code {response.status_code}")
-                if response.status_code == 200:
-
-                    total_size = int(response.headers.get('content-length', 0))
-                    chunk_size = 1024  # Define the chunk size
-
-                    # Initialize an empty byte array to hold the data
-                    data = bytearray()
-
-                    with tqdm(
-                        desc="Downloading",
-                        total=total_size,
-                        unit='iB',
-                        unit_scale=True,
-                        unit_divisor=1024,
-                    ) as bar:
-                        for chunk in response.iter_content(chunk_size=chunk_size):
-                            # Update the byte array with the chunk
-                            data.extend(chunk)
-                            # Update the progress bar
-                            bar.update(len(chunk))
-
-
-                    downloaded.append(row['Name'])
-
-                    print(f"Saving in... {tile_path}")
-
-                    utils.open_compressed(byte_stream=data,
-                                          file_format='zip',
-                                          output_folder=self.output_path)
-            
-                else:
-                    pending.append(row['Name'])
-                    print ('The product is offline')
-                    print ('Activating recovery mode ...')
-                
-            else:
+        
+        for _, row in results.iterrows():
+            if row['Online'] is False:
                 pending.append(row['Name'])
-                print ('The product {} is offline'.format(row['Name']))
-                print ('Activating recovery mode ... \n')
-                
+                print(f"Product {row['Name']} is offline. Recovery mode activated.")
+                continue
+            
+            tile_path = os.path.join(self.output_path, row['Name'])
+            if os.path.exists(tile_path):
+                print(f"Product {row['Name']} already downloaded.")
+                downloaded.append(row['Name'])
+                continue
+            
+            url = "https://catalogue.dataspace.copernicus.eu/odata/v1/Products(%s)/$value" % row['Id']
+            response = session.head(url, allow_redirects=False)
+
+            if response.status_code in (301, 302, 303, 307):
+                url = response.headers['Location']
+
+            response = session.get(url, stream=True)
+            if response.status_code != 200:
+                pending.append(row['Name'])
+                print(f"Product {row['Name']} failed to download. Status: {response.status_code}")
+                continue
+            
+            total_size = int(response.headers.get('content-length', 0))
+            chunk_size = 1024
+            data = bytearray()
+            
+            with tqdm(desc=f"Downloading {row['Name']}", total=total_size, unit='B', unit_scale=True) as bar:
+                for chunk in response.iter_content(chunk_size=chunk_size):
+                    data.extend(chunk)
+                    bar.update(len(chunk))
+            
+            utils.open_compressed(byte_stream=data, file_format='zip', output_folder=self.output_path)
+            downloaded.append(row['Name'])
+        
         return downloaded, pending

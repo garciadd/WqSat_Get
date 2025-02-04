@@ -89,7 +89,6 @@ def load_data_path():
         with open(config_path(), 'r') as file:
             data = yaml.safe_load(file)
             data_path = data.get('data_path', None)
-            print(f"Directory {data_path} set as data_path")
 
             # Ensure the directory exists
             if data_path:
