@@ -235,90 +235,102 @@ def parse_txt_to_dict(file_path):
 
     return config
 
-def process_coordinates(W, N, E, S):
-    """Process the coordinates to validate and return them as standard Python floats."""
-    # Convert to float using Python's standard float
-    W, N, E, S = float(W), float(N), float(E), float(S)
-
-    latitude_range = [-90, 90]  # Valid range for latitude
-    longitude_range = [-180, 180]  # Valid range for longitude
-    
-    # Validate that North is greater than South
-    if not N > S:
-        raise ValueError("The north coordinate must be greater than the south coordinate")
-
-    # Validate that West is less than East
-    if not W < E:
-        raise ValueError("The west coordinate must be less than the east coordinate")
-
-    # Validate coordinates are within valid range
-    if not (latitude_range[0] <= N <= latitude_range[1] and
-            latitude_range[0] <= S <= latitude_range[1] and
-            longitude_range[0] <= W <= longitude_range[1] and
-            longitude_range[0] <= E <= longitude_range[1]):
-        raise ValueError("Coordinates are out of valid range")
-
-    return W, N, E, S
-
-def validate_download_config(args):
+def validate_coordinates(W, N, E, S):
     """
-    Validate the configuration for satellite image download.
-    
+    Validates geographic coordinates without modifying them.
+
     Args:
-        data (dict): Configuration dictionary parsed from the workflow file.
-    
-    Returns:
-        dict: Validated and possibly augmented configuration.
-    
+        W: Western longitude (float or str).
+        N: Northern latitude (float or str).
+        E: Eastern longitude (float or str).
+        S: Southern latitude (float or str).
+
     Raises:
-        ValueError: If critical fields are invalid and no tiles are provided.
+        ValueError: If coordinates are out of range or incorrectly ordered.
     """
-        
-    # Validate platform
-    platform = args.get['platform']
-    if platform not in ['SENTINEL-2', 'SENTINEL-3']:
-        raise ValueError(f"Invalid platform: {platform}. Valid options are 'SENTINEL-2', 'SENTINEL-3'.")
+    # Define valid ranges
+    lat_range = (-90, 90)
+    lon_range = (-180, 180)
 
-    # Validate product_type
-    product_type = args.get['product_type']
-    if platform == 'SENTINEL-2' and product_type not in ['S2MSI1C', 'S2MSI2A']:
-        raise ValueError(f"Invalid product type for {platform}: {product_type}. Valid options are 'S2MSI1C', 'S2MSI2A'.")
-    elif platform == 'SENTINEL-3' and product_type not in ['OL_1_EFR___', 'OL_1_ERR___']:
-        raise ValueError(f"Invalid product type for {platform}: {product_type}. Valid options are 'OL_1_EFR___', 'OL_1_ERR___'.")
+    if not (lat_range[0] <= S < N <= lat_range[1]):
+        raise ValueError("❌ N must be greater than S and within the range [-90, 90].")
 
-    # Validate start_date and end_date
-    try:
-        start_date = datetime.datetime.strptime(args.get['start_date'], "%Y-%m-%d")
-        end_date = datetime.datetime.strptime(args.get['end_date'], "%Y-%m-%d")
-        if end_date <= start_date:
-            raise ValueError("The end date must be after the start date.")
-    except ValueError:
-        raise ValueError("'start_date' and 'end_date' must be in the format YYYY-MM-DD.")
+    if not (lon_range[0] <= W < E <= lon_range[1]):
+        raise ValueError("❌ W must be less than E and within the range [-180, 180].")
+
+def validate_download_inputs(args):
+    """
+    Validates user input arguments for satellite image download.
+
+    Args:
+        args (dict): Dictionary containing the download parameters.
+
+    Returns:
+        bool: True if all inputs are valid.
+
+    Raises:
+        ValueError: If any input is invalid.
+    """
+
+    # Validate tile and tiles_list
+    tile = args.get('tile')
+    if tile and not isinstance(tile, str):
+        raise ValueError("❌ 'tile' must be a string.")
     
-    # Validate region or coordinates
-    coordinates = args.get("coordinates")
-    region = args.get("region")
-    if not coordinates and not region:
-        raise ValueError("Either 'coordinates' or 'region' must be provided.")
-    if coordinates:
-        if not isinstance(coordinates, list) or len(coordinates) != 4:
-            raise ValueError("'coordinates' must be a list of 4 values [W, S, E, N].")
+    tiles_list = args.get('tiles_list')
+    if tiles_list:
+        if not isinstance(tiles_list, list) or not all(isinstance(t, str) for t in tiles_list):
+            raise ValueError("❌ 'tiles_list' must be a list of strings.")
+
+    # Validate dates
+    start_date = args.get('start_date')
+    end_date = args.get('end_date')
+    if start_date and end_date:
         try:
-            # Process and validate coordinates
-            args["coordinates"] = process_coordinates(*coordinates)
-        except ValueError as e:
-            raise ValueError(f"Invalid coordinates: {e}")
-    elif region:
-        coordinates = get_coordinates(region)
-        if not coordinates:
-            raise ValueError(f"Region '{region}' not found in regions.yaml.")
-        args["coordinates"] = coordinates  # Prioritize region-derived coordinates
+            start = datetime.datetime.strptime(start_date, "%Y-%m-%d")
+            end = datetime.datetime.strptime(end_date, "%Y-%m-%d")
+            if end <= start:
+                raise ValueError("❌ 'end_date' must be later than 'start_date'.")
+        except ValueError:
+            raise ValueError("❌ 'start_date' and 'end_date' must be in YYYY-MM-DD format.")
 
-    # Validate cloud and set default
-    cloud = args.get("cloud")
-    if cloud is None:
-        args["cloud"] = 100  # Default value
-    elif not isinstance(cloud, int) or not (0 <= cloud <= 100):
-        raise ValueError("'cloud' must be an integer between 0 and 100.")
+    # Validate coordinates
+    coordinates = args.get('coordinates')
+
+    if coordinates:
+        if isinstance(coordinates, tuple) and len(coordinates) == 2:
+            lat, lon = coordinates
+            if not (-90 <= lat <= 90 and -180 <= lon <= 180):
+                raise ValueError("❌ Coordinates are out of valid range (-90 to 90 for latitude, -180 to 180 for longitude).")
+        elif isinstance(coordinates, dict) and all(k in coordinates for k in ['N', 'S', 'E', 'W']):
+            validate_coordinates(coordinates['W'], coordinates['N'], coordinates['E'], coordinates['S'])
+        else:
+            raise ValueError("❌ Invalid coordinate format. Use (lat, lon) or {'N': , 'S': , 'E': , 'W': }.")
+
+    # Validate platform
+    valid_platforms = {"SENTINEL-2", "SENTINEL-3"}
+    platform = args.get('platform')
+
+    if platform is not None and platform not in valid_platforms:
+        raise ValueError(f"❌ 'platform' must be one of {valid_platforms}, not '{platform}'.")
+
+    # Validate product_type (Must be valid for the selected platform)
+    valid_products = {
+                    "SENTINEL-2": {"S2MSI1C", "S2MSI2A"},
+                    "SENTINEL-3": {"OL_1_EFR___", "OL_2_LFR___", "OL_2_WFR___"}
+                    }
     
-    return args
+    product_type = args.get('product_type')
+    if product_type is not None:
+        if not isinstance(product_type, str):
+            raise ValueError("❌ 'product_type' must be a string.")
+        if platform not in valid_products or product_type not in valid_products[platform]:
+            raise ValueError(f"❌ Invalid 'product_type' for platform {platform}. Must be one of {valid_products.get(platform, {})}.")
+
+    # Validate cloud cover
+    cloud = args.get('cloud')
+    if cloud is not None:
+        if not isinstance(cloud, int) or not (0 <= cloud <= 100):
+            raise ValueError("❌ 'cloud' must be an integer between 0 and 100.")
+
+    return True

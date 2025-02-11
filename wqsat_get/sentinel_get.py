@@ -3,12 +3,17 @@ Given two dates and the coordinates, download N Sentinel Collections scenes from
 The downloaded Sentinel collection scenes are compatible with:
 
 Sentinel-2:
-    - S2MSI1C: Top-of-atmosphere reflectances in cartographic geometry
-    - S2MSI2A: Bottom-of-atmosphere reflectance in cartographic geometry
+    * Level-1:
+        - S2MSI1C: Top-of-atmosphere reflectances in cartographic geometry
+    * Level-2:
+        - S2MSI2A: Bottom-of-atmosphere reflectance in cartographic geometry
     
 Sentinel-3:
-    - OL_1_EFR___: Full Resolution TOA Reflectance
-    - OL_1_ERR___: Reduced Resolution TOA Reflectance
+    * Level-1:
+        - OL_1_EFR___: Full Resolution TOA Reflectance
+    * Level-2:
+        - OL_2_LFR___: the level-2 Land Product provides land and atmospheric geophysical parameters computed for full Resolution.  
+        - OL_2_WFR___: the Level-2 Water Product provides water and atmospheric geophysical parameters computed for Full Resolution.
 ----------------------------------------------------------------------------------------------------------
 
 Authors: Daniel García-Díaz & Fernando Aguilar
@@ -29,37 +34,35 @@ class Download:
 
     def __init__(self, start_date=None, end_date=None, coordinates=None, platform=None, product_type=None, tile=None, tiles_list=None, cloud=100):
         """
-        Initializes the Download class with the provided parameters.
-        Depending on the input parameters, the search method will be determined.
+        Initializes the Download class, validating input parameters and setting up API configuration.
+
+        Args:
+            start_date (str, optional): Start date for the download period.
+            end_date (str, optional): End date for the download period.
+            coordinates (tuple, optional): Geographical coordinates for the area of interest.
+            platform (str, optional): Platform from which data will be downloaded (e.g., Sentinel).
+            product_type (str, optional): Type of product to be downloaded.
+            tile (str, optional): Specific tile for downloading data.
+            tiles_list (list, optional): List of tiles for batch download.
+            cloud (int, optional): Maximum cloud coverage percentage for filtering data. Default is 100.
         
-        Parameters
-        ----------
-        inidate : Initial date of the query in format: datetime.strptime "%Y-%m-%dT%H:%M:%SZ"
-        enddate : Final date of the query in format: datetime.strptime "%Y-%m-%dT%H:%M:%SZ"
-        coordinates : dict. Coordinates that delimit the region to be searched.
-            Example: {"W": -2.830, "S": 41.820, "E": -2.690, "N": 41.910}}
-        producttype : str
-            Dataset type. A list of productypes can be found in https://mapbox.github.io/usgs/reference/catalog/ee.html
-        cloud: int
-            Cloud cover percentage to narrow your search
-        
-        Attention please!!
-        ------------------
-        Registration and login credentials are required to access all system features and download data.
-        To register, please create a username and password.
-        Once registered, the username and password must be added to the credentials.yaml file.
-        Example: sentinel: {password: password, user: username}
+        Raises:
+            ValueError: If input validation fails or credentials are missing.
         """
         
-        #Search parameters
-        self.start_date = start_date.strftime('%Y-%m-%dT%H:%M:%SZ')
-        self.end_date = end_date.strftime('%Y-%m-%dT%H:%M:%SZ')
-        self.platform = platform.upper() #All caps
-        self.producttype = product_type
-        self.cloud = int(cloud)
-        self.coord = coordinates
-        self.tiles_list = tiles_list
-        self.tile = tile
+        # Validate input parameters
+        self.params = {
+                'start_date': start_date,
+                'end_date': end_date,
+                'coordinates': coordinates,
+                'platform': platform,
+                'product_type': product_type,
+                'tile': tile,
+                'tiles_list': tiles_list,
+                'cloud': cloud
+                }
+        
+        utils.validate_download_inputs(self.params)
 
         ## Define output path for downloads
         self.output_path = utils.load_data_path()
@@ -71,11 +74,19 @@ class Download:
         if not self.credentials:
             raise ValueError("Missing Sentinel API credentials in credentials.yaml")
         
-        # Open the request session
+        # Initialize session
         self.session = requests.Session()
         
     def get_keycloak(self):
-        """Retrieves an authentication token from the Keycloak authentication service."""
+        """
+        Retrieves Keycloak credentials for authentication.
+
+        Returns:
+            dict: A dictionary containing Keycloak credentials (e.g., token, client_id, etc.)
+        
+        Raises:
+            ValueError: If Keycloak credentials are missing or cannot be fetched.
+        """
 
         url = "https://identity.dataspace.copernicus.eu/auth/realms/CDSE/protocol/openid-connect/token"
         data = {
@@ -87,24 +98,27 @@ class Download:
         try:
             response = requests.post(url, data=data)
             response.raise_for_status()
-            return response.json().get("access_token")
+            token = response.json().get("access_token")
+            if not token:
+                raise ValueError("Failed to retrieve access token from Keycloak.")
+            return token
         except requests.exceptions.RequestException as e:
             raise Exception(f"Keycloak token creation failed: {e}")
 
     def search(self):
         """Determines which search method to use based on the input parameters."""
 
-        if self.tile:
+        if self.params['tile']:
             return self.search_by_name()
-        elif self.tiles_list:
+        elif self.params['tiles_list']:
             return self.search_by_list()
         else:
             return self.search_by_parameters()
     
     def search_by_name(self):
-        """Searches for a single product by its name."""
+        """Searches for a single product by its name (tile)."""
 
-        url_query = f"https://catalogue.dataspace.copernicus.eu/odata/v1/Products?$filter=Name eq '{self.tile}'"
+        url_query = f"https://catalogue.dataspace.copernicus.eu/odata/v1/Products?$filter=Name eq '{self.params['tile']}'"
         response = self.session.get(url_query)
         response.raise_for_status()
 
@@ -120,7 +134,7 @@ class Download:
         """Searches for multiple products using a list of product names."""
 
         url = "https://catalogue.dataspace.copernicus.eu/odata/v1/Products/OData.CSC.FilterList"
-        payload = {"FilterProducts": [{"Name": name} for name in self.tiles_list]}
+        payload = {"FilterProducts": [{"Name": name} for name in self.params['tiles_list']]}
         headers = {'Content-Type': 'application/json'}
         
         response = self.session.post(url, json=payload, headers=headers)
@@ -137,28 +151,37 @@ class Download:
     def search_by_parameters(self):
         """Searches for products based on date range, coordinates, platform, and product type."""
 
-        if not all([self.start_date, self.end_date, self.coord, self.platform, self.producttype]):
-            raise ValueError("Missing required parameters for search by parameters.")
+        start_date, end_date, coordinates, platform, product_type, cloud = (
+            self.params['start_date'], self.params['end_date'], self.params['coordinates'], self.params['platform'], 
+            self.params['product_type'], self.params['cloud']
+        )
 
-        # Create the spatial query footprint
-        footprint = 'POLYGON(({0} {1},{2} {1},{2} {3},{0} {3},{0} {1}))'.format(self.coord['W'],
-                                                                                self.coord['S'],
-                                                                                self.coord['E'],
-                                                                                self.coord['N'])
+        if not all([start_date, end_date, coordinates, platform, product_type]):
+            raise ValueError("Missing required parameters for search by parameters.")
+        
+        if isinstance(coordinates, tuple) and len(coordinates) == 2:  # Punto
+            lat, lon = coordinates
+            footprint = f"POINT({lon} {lat})"
+        else: # Bounding box
+            # Create the spatial query footprint
+            footprint = 'POLYGON(({0} {1},{2} {1},{2} {3},{0} {3},{0} {1}))'.format(coordinates['W'],
+                                                                                    coordinates['S'],
+                                                                                    coordinates['E'],
+                                                                                    coordinates['N'])
 
         # Construct the API query
-        if self.platform == 'SENTINEL-2':
-            url_query = (f"https://catalogue.dataspace.copernicus.eu/odata/v1/Products?$filter=Collection/Name eq '{self.platform}' and "
+        if platform == 'SENTINEL-2':
+            url_query = (f"https://catalogue.dataspace.copernicus.eu/odata/v1/Products?$filter=Collection/Name eq '{platform}' and "
             f"OData.CSC.Intersects(area=geography'SRID=4326;{footprint}') and "
-            f"ContentDate/Start gt {self.start_date} and ContentDate/Start lt {self.end_date} and "
-            f"Attributes/OData.CSC.DoubleAttribute/any(att:att/Name eq 'cloudCover' and att/OData.CSC.DoubleAttribute/Value lt {self.cloud}) and "
-            f"Attributes/OData.CSC.StringAttribute/any(att:att/Name eq 'productType' and att/OData.CSC.StringAttribute/Value eq '{self.producttype}')")
+            f"ContentDate/Start gt {start_date} and ContentDate/Start lt {end_date} and "
+            f"Attributes/OData.CSC.DoubleAttribute/any(att:att/Name eq 'cloudCover' and att/OData.CSC.DoubleAttribute/Value lt {cloud}) and "
+            f"Attributes/OData.CSC.StringAttribute/any(att:att/Name eq 'productType' and att/OData.CSC.StringAttribute/Value eq '{product_type}')")
         
-        elif self.platform == 'SENTINEL-3':
-            url_query = (f"https://catalogue.dataspace.copernicus.eu/odata/v1/Products?$filter=Collection/Name eq '{self.platform}' and "
+        elif platform == 'SENTINEL-3':
+            url_query = (f"https://catalogue.dataspace.copernicus.eu/odata/v1/Products?$filter=Collection/Name eq '{platform}' and "
             f"OData.CSC.Intersects(area=geography'SRID=4326;{footprint}') and "
-            f"ContentDate/Start gt {self.start_date} and ContentDate/Start lt {self.end_date} and "
-            f"Attributes/OData.CSC.StringAttribute/any(att:att/Name eq 'productType' and att/OData.CSC.StringAttribute/Value eq '{self.producttype}')")
+            f"ContentDate/Start gt {start_date} and ContentDate/Start lt {end_date} and "
+            f"Attributes/OData.CSC.StringAttribute/any(att:att/Name eq 'productType' and att/OData.CSC.StringAttribute/Value eq '{product_type}')")
         
         # Execute the API request
         response = self.session.get(url_query)
