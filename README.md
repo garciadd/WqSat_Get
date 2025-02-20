@@ -1,4 +1,9 @@
 # WqSat_Get: A Python Package for Satellite Image Download
+[![Python Version](https://img.shields.io/badge/python-3.7+-blue.svg)](https://www.python.org/downloads/)
+[![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+[![GitHub Actions Status](https://github.com/garciadd/WqSat_Get/workflows/CI/badge.svg)](https://github.com/garciadd/WqSat_Get/actions)
+[![Code Coverage](https://img.shields.io/badge/coverage-80%25-brightgreen)](https://your-coverage-report-url)
+
 ## Overview
 WqSat_Get is a Python package designed for efficient downloading of satellite images from Sentinel-2 and Sentinel-3 platforms. The package simplifies the process of querying, filtering, and downloading high-resolution satellite imagery using the Copernicus Open Access Hub API. It also supports execution via the command line.
 
@@ -40,7 +45,7 @@ To install all required dependencies, use:
 pip install -r requirements.txt
 ```
 
-## Cedentials
+## Credentials
 To use this package, you need to be registered on the [Copernicus Data Space Ecosystem](https://dataspace.copernicus.eu/). Registration is free and allows access to the required APIs. Once registered, you must create a \`credentials.yaml\` file in your working directory containing your login credentials. The file should be structured as follows:
 ```
 sentinel:
@@ -48,6 +53,13 @@ sentinel:
   password: your_password
 ```
 For detailed examples on how to create and update the `credentials.yaml` file programmatically, refer to the **Config** notebook included in the repository.
+
+To configure the access to the data space directly, you can set the configuration providing your credentials like this:
+
+```
+utils.save_config(sentinel_user="new_user", sentinel_password="")
+```
+
 
 ## Usage
 ### 1. From Python
@@ -91,9 +103,9 @@ cloud 20
 ```
 Run the command:
 ```
-python3 wqsat_get.py -d config.txt
+python3 wqsat_get.py -d config_commandLine_example.txt
 ```
-—
+
 ## Error Handling
 * **Invalid Coordinates**: Ensure `N > S` and `E > W`.
 * **Date Format Errors**: Dates must be in `YYYY-MM-DD` format.
@@ -102,4 +114,4 @@ python3 wqsat_get.py -d config.txt
     
 —
 ## License
-This project is licensed under the MIT License. See the `LICENSE` file for details.
+This project is licensed under the Apache-2.0 License. See the `LICENSE` file for details.

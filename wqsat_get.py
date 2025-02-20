@@ -109,20 +109,13 @@ def setup_download(download_file):
 
         # Validate download-specific fields
         try:
-            validated_data = utils.validate_download_config(data)
-
             downloader = sentinel_get.Download(
-                start_date=datetime.strptime(validated_data["start_date"], "%Y-%m-%d"),
-                end_date=datetime.strptime(validated_data["end_date"], "%Y-%m-%d"),
-                coordinates={
-                    "W": validated_data["coordinates"][0],
-                    "S": validated_data["coordinates"][1],
-                    "E": validated_data["coordinates"][2],
-                    "N": validated_data["coordinates"][3],
-                },
-                platform=validated_data["platform"],
-                product_type=validated_data["product_type"],
-                cloud=validated_data["cloud"]
+                start_date=data["start_date"],
+                end_date=data["end_date"],
+                coordinates=data["coordinates"],
+                platform=data["platform"],
+                product_type=data["product_type"],
+                cloud=data["cloud"]
             )
             downloaded_tiles, pending_tiles = downloader.download()
 
