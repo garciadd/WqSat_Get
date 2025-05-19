@@ -10,5 +10,4 @@ setup(
     description='Python package for downloading satellite images for water quality monitoring.',
     author='CSIC',
     license='Apache License 2.0',
-    install_requires=reqs,
-    pbr=True)
+    install_requires=reqs)
