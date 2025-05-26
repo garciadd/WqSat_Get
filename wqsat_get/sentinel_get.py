@@ -49,21 +49,16 @@ class Download:
         Raises:
             ValueError: If input validation fails or credentials are missing.
         """
-        
-        # Validate input parameters
-        self.params = {
-                'start_date': start_date,
-                'end_date': end_date,
-                'coordinates': coordinates,
-                'platform': platform,
-                'product_type': product_type,
-                'tile': tile,
-                'tiles_list': tiles_list,
-                'cloud': cloud
-                }
-        
-        utils.validate_download_inputs(self.params)
 
+        self.start_date = start_date
+        self.end_date = end_date
+        self.coordinates = coordinates
+        self.platform = platform
+        self.product_type = product_type
+        self.tile = tile
+        self.tiles_list = tiles_list
+        self.cloud = cloud
+                
         ## Define output path for downloads
         self.output_path = utils.load_data_path()
         os.makedirs(self.output_path, exist_ok=True)
@@ -108,9 +103,9 @@ class Download:
     def search(self):
         """Determines which search method to use based on the input parameters."""
 
-        if self.params['tile']:
+        if self.tile:
             return self.search_by_name()
-        elif self.params['tiles_list']:
+        elif self.tiles_list:
             return self.search_by_list()
         else:
             return self.search_by_parameters()
@@ -118,7 +113,7 @@ class Download:
     def search_by_name(self):
         """Searches for a single product by its name (tile)."""
 
-        url_query = f"https://catalogue.dataspace.copernicus.eu/odata/v1/Products?$filter=Name eq '{self.params['tile']}'"
+        url_query = f"https://catalogue.dataspace.copernicus.eu/odata/v1/Products?$filter=Name eq '{self.tile}'"
         response = self.session.get(url_query)
         response.raise_for_status()
 
@@ -134,7 +129,7 @@ class Download:
         """Searches for multiple products using a list of product names."""
 
         url = "https://catalogue.dataspace.copernicus.eu/odata/v1/Products/OData.CSC.FilterList"
-        payload = {"FilterProducts": [{"Name": name} for name in self.params['tiles_list']]}
+        payload = {"FilterProducts": [{"Name": name} for name in self.tiles_list]}
         headers = {'Content-Type': 'application/json'}
         
         response = self.session.post(url, json=payload, headers=headers)
@@ -152,9 +147,8 @@ class Download:
         """Searches for products based on date range, coordinates, platform, and product type."""
 
         start_date, end_date, coordinates, platform, product_type, cloud = (
-            self.params['start_date'], self.params['end_date'], self.params['coordinates'], self.params['platform'], 
-            self.params['product_type'], self.params['cloud']
-        )
+            self.start_date, self.end_date, self.coordinates, self.platform, 
+            self.product_type, self.cloud)
 
         if not all([start_date, end_date, coordinates, platform, product_type]):
             raise ValueError("Missing required parameters for search by parameters.")
@@ -186,10 +180,7 @@ class Download:
         # Execute the API request
         response = self.session.get(url_query)
         response.raise_for_status()
-
-        # Parse the response
-        json_feed = response.json()
-
+        json_feed = response.json() # Parse the response
         if "value" not in json_feed:
             raise ValueError("No results found in response.")
         

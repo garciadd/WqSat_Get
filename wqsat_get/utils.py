@@ -18,14 +18,12 @@ def regions_path():
     """Returns the full path of the regions.yaml file."""
     return os.path.join(base_dir(), 'regions.yaml')
 
-def save_config(landsat_user=None, landsat_password=None, sentinel_user=None, sentinel_password=None, data_path=None):
+def save_config(sentinel_user=None, sentinel_password=None, data_path=None):
     """
     Creates or updates the config.yaml file. If the file already exists, updates
     only the fields provided while preserving existing values.
     
     Args:
-        landsat_user (str, optional): Landsat username.
-        landsat_password (str, optional): Landsat password.
         sentinel_user (str, optional): Sentinel username.
         sentinel_password (str, optional): Sentinel password.
         data_path (str, optional): Path to the data directory.
@@ -40,14 +38,9 @@ def save_config(landsat_user=None, landsat_password=None, sentinel_user=None, se
 
     # Ensure default structure for credentials
     data.setdefault('credentials', {})
-    landsat_config = data['credentials'].setdefault('landsat', {})
     sentinel_config = data['credentials'].setdefault('sentinel', {})
 
     # Update values only if new ones are provided
-    if landsat_user is not None:
-        landsat_config['user'] = landsat_user
-    if landsat_password is not None:
-        landsat_config['password'] = landsat_password
     if sentinel_user is not None:
         sentinel_config['user'] = sentinel_user
     if sentinel_password is not None:
@@ -59,8 +52,6 @@ def save_config(landsat_user=None, landsat_password=None, sentinel_user=None, se
 
     # If the file does not exist, ensure default values for missing fields
     if not os.path.exists(config_path()):
-        landsat_config.setdefault('user', '*****')
-        landsat_config.setdefault('password', '*****')
         sentinel_config.setdefault('user', '*****')
         sentinel_config.setdefault('password', '*****')
         data.setdefault('data_path', '*****')
@@ -165,11 +156,9 @@ def open_compressed(byte_stream, file_format, output_folder, file_path=None):
     """
     
     tar_extensions = ['tar', 'bz2', 'tb2', 'tbz', 'tbz2', 'gz', 'tgz', 'lz', 'lzma', 'tlz', 'xz', 'txz', 'Z', 'tZ']
-    
     if file_format in tar_extensions:
         with open(file_path, 'wb') as f:
             f.write(byte_stream)
-        # tar = tarfile.open(fileobj=byte_stream, mode="r:{}".format(file_format))
         tar = tarfile.open(file_path)
         tar.extractall(output_folder) # specify which folder to extract to
         
@@ -296,7 +285,6 @@ def validate_download_inputs(args):
 
     # Validate coordinates
     coordinates = args.get('coordinates')
-
     if coordinates:
         if isinstance(coordinates, tuple) and len(coordinates) == 2:
             lat, lon = coordinates
@@ -310,16 +298,12 @@ def validate_download_inputs(args):
     # Validate platform
     valid_platforms = {"SENTINEL-2", "SENTINEL-3"}
     platform = args.get('platform')
-
     if platform is not None and platform not in valid_platforms:
         raise ValueError(f"❌ 'platform' must be one of {valid_platforms}, not '{platform}'.")
 
     # Validate product_type (Must be valid for the selected platform)
-    valid_products = {
-                    "SENTINEL-2": {"S2MSI1C", "S2MSI2A"},
-                    "SENTINEL-3": {"OL_1_EFR___", "OL_2_LFR___", "OL_2_WFR___"}
-                    }
-    
+    valid_products = {"SENTINEL-2": {"S2MSI1C", "S2MSI2A"},
+                      "SENTINEL-3": {"OL_1_EFR___", "OL_2_LFR___", "OL_2_WFR___"}}
     product_type = args.get('product_type')
     if product_type is not None:
         if not isinstance(product_type, str):
