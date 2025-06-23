@@ -32,7 +32,7 @@ from wqsat_get import utils
 
 class Download:
 
-    def __init__(self, start_date=None, end_date=None, coordinates=None, platform=None, product_type=None, tile=None, tiles_list=None, cloud=100):
+    def __init__(self, start_date=None, end_date=None, coordinates=None, platform=None, product_type=None, tile=None, tiles_list=None, output_dir=None, cloud=100):
         """
         Initializes the Download class, validating input parameters and setting up API configuration.
 
@@ -44,6 +44,7 @@ class Download:
             product_type (str, optional): Type of product to be downloaded.
             tile (str, optional): Specific tile for downloading data.
             tiles_list (list, optional): List of tiles for batch download.
+            workdir (str, optional): Working directory for storing downloaded data. If None, uses default path.
             cloud (int, optional): Maximum cloud coverage percentage for filtering data. Default is 100.
         
         Raises:
@@ -60,7 +61,7 @@ class Download:
         self.cloud = cloud
                 
         ## Define output path for downloads
-        self.output_path = utils.load_data_path()
+        self.output_path = output_dir or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         os.makedirs(self.output_path, exist_ok=True)
         
         # Set up API and credentials

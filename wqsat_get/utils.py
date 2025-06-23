@@ -10,28 +10,27 @@ def base_dir():
     """Returns the base directory where config.yaml is stored."""
     return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-def config_path():
-    """Returns the full path of the config.yaml file."""
-    return os.path.join(base_dir(), 'config.yaml')
+def credentials_file():
+    """Returns the full path of the credentials.yaml file."""
+    return os.path.join(base_dir(), 'credentials.yaml')
 
-def regions_path():
+def regions_file():
     """Returns the full path of the regions.yaml file."""
     return os.path.join(base_dir(), 'regions.yaml')
 
-def save_config(sentinel_user=None, sentinel_password=None, data_path=None):
+def save_credentials(sentinel_user=None, sentinel_password=None):
     """
-    Creates or updates the config.yaml file. If the file already exists, updates
+    Creates or updates the credentials.yaml file. If the file already exists, updates
     only the fields provided while preserving existing values.
     
     Args:
         sentinel_user (str, optional): Sentinel username.
         sentinel_password (str, optional): Sentinel password.
-        data_path (str, optional): Path to the data directory.
     """
 
     try:
         # Load the existing configuration, if it exists
-        with open(config_path(), 'r') as file:
+        with open(credentials_file(), 'r') as file:
             data = yaml.safe_load(file) or {}
     except FileNotFoundError:
         data = {}  # Start with an empty config if the file does not exist
@@ -46,63 +45,31 @@ def save_config(sentinel_user=None, sentinel_password=None, data_path=None):
     if sentinel_password is not None:
         sentinel_config['password'] = sentinel_password
 
-    # Update data path if provided
-    if data_path is not None:
-        data['data_path'] = data_path
-
     # If the file does not exist, ensure default values for missing fields
-    if not os.path.exists(config_path()):
+    if not os.path.exists(credentials_file()):
         sentinel_config.setdefault('user', '*****')
         sentinel_config.setdefault('password', '*****')
-        data.setdefault('data_path', '*****')
 
     # Save the updated data back to the file
-    with open(config_path(), 'w') as file:
+    with open(credentials_file(), 'w') as file:
         yaml.dump(data, file, default_flow_style=False)
     print("Config file saved successfully.")
 
 def load_credentials():
     """Loads and returns the credentials from the config.yaml file."""
     try:
-        with open(config_path(), 'r') as file:
+        with open(credentials_file(), 'r') as file:
             data = yaml.safe_load(file)
             return data.get('credentials', {})
     except FileNotFoundError:
         print("Error: 'config.yaml' file not found.")
         return {}
     
-def load_data_path():
-    """
-    Loads and returns the data path from the config.yaml file. Creates the directory if it doesn't exist.
-    Raises an error if the directory cannot be created.
-    """
-    try:
-        with open(config_path(), 'r') as file:
-            data = yaml.safe_load(file)
-            data_path = data.get('data_path', None)
-
-            # Ensure the directory exists
-            if data_path:
-                if not os.path.exists(data_path):
-                    try:
-                        os.makedirs(data_path)
-                        print(f"Directory '{data_path}' created.")
-                    except Exception as e:
-                        raise OSError(f"Failed to create the directory '{data_path}': {e}")
-
-            return data_path
-        
-    except FileNotFoundError:
-        print("Error: 'config.yaml' file not found.")
-        return None
-    except Exception as e:
-        raise RuntimeError(f"An unexpected error occurred: {e}")
-
 def update_regions(region, W, S, E, N):
     """Update the YAML file (regions.yaml) with new region and its coordinates."""
     # Load the current data from the file
     try:
-        with open(regions_path(), 'r') as file:
+        with open(regions_file(), 'r') as file:
             data = yaml.safe_load(file) or {}
     except FileNotFoundError:
         data = {}
@@ -111,7 +78,7 @@ def update_regions(region, W, S, E, N):
     data[region] = {'W': W, 'S': S, 'E': E, 'N': N}
 
     # Save the updated data back to the file
-    with open(regions_path(), 'w') as file:
+    with open(regions_file(), 'w') as file:
         yaml.dump(data, file, default_flow_style=False)
     print(f"Region '{region}' added successfully.")
 
@@ -119,7 +86,7 @@ def get_regions():
     """Show all regions stored in the YAML file (regions.yaml)."""
     # Load the data from the file
     try:
-        with open(regions_path(), 'r') as file:
+        with open(regions_file(), 'r') as file:
             data = yaml.safe_load(file)
         print(f"Regions in the file: {data.keys()}")
     except FileNotFoundError:
@@ -129,7 +96,7 @@ def get_coordinates(region):
     """Load the coordinates (W, S, E, N) of a specific region."""
     # Load the data from the file
     try:
-        with open(regions_path(), 'r') as file:
+        with open(regions_file(), 'r') as file:
             data = yaml.safe_load(file)
         if region in data:
             return data[region]
@@ -169,60 +136,6 @@ def open_compressed(byte_stream, file_format, output_folder, file_path=None):
         zf.extractall(output_folder)
     else:
         raise ValueError('Invalid file format for the compressed byte_stream')
-    
-def parse_txt_to_dict(file_path):
-    """
-    Parses a custom text file into a dictionary.
-    Supports optional commas at the end of lines and values with or without quotes.
-    
-    Args:
-        file_path (str): Path to the text file to be parsed.
-    
-    Returns:
-        dict: A dictionary with the parsed key-value pairs.
-    
-    Raises:
-        ValueError: If the file format is invalid or parsing fails.
-        FileNotFoundError: If the file does not exist.
-        Handles lists and coordinate arrays properly.
-    """
-
-    config = {}
-    try:
-        with open(file_path, 'r') as file:
-            for line in file:
-                # Strip whitespace and ignore comments or empty lines
-                line = line.strip()
-                if not line or line.startswith('#'):
-                    continue
-
-                # Split on the first colon
-                if ':' not in line:
-                    raise ValueError(f"Invalid line format: '{line}' (missing ':')")
-                key, value = line.split(':', 1)
-
-                # Clean and process key-value pairs
-                key = key.strip()
-                value = value.strip().rstrip(',')
-
-                # Remove surrounding quotes if present
-                if value.startswith(("'", '"')) and value.endswith(("'", '"')):
-                    value = value[1:-1]
-
-                # Convert lists, coordinates, or other literals using ast.literal_eval
-                try:
-                    value = ast.literal_eval(value)
-                except (ValueError, SyntaxError):
-                    pass  # Leave value as a string if it's not a valid literal
-                
-                # Add the key-value pair to the dictionary
-                config[key] = value
-    except FileNotFoundError:
-        raise FileNotFoundError(f"The file {file_path} was not found.")
-    except Exception as e:
-        raise ValueError(f"Error parsing the file: {e}")
-
-    return config
 
 def validate_coordinates(W, N, E, S):
     """
@@ -247,7 +160,7 @@ def validate_coordinates(W, N, E, S):
     if not (lon_range[0] <= W < E <= lon_range[1]):
         raise ValueError("❌ W must be less than E and within the range [-180, 180].")
 
-def validate_download_inputs(args):
+def validate_inputs(args):
     """
     Validates user input arguments for satellite image download.
 

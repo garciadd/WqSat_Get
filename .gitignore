@@ -3,8 +3,8 @@
 build/
 
 # Exclude sensitive configuration files
-config.yaml
 regions.yaml
+credentials.yaml
 
 # Ignorar archivos .pyc y carpetas __pycache__
 *.pyc

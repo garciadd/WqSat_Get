@@ -22,9 +22,10 @@ class GetManager:
             'product_type': self.config.get('product_type'),
             'tile': self.config.get('tile'),
             'tiles_list': self.config.get('tiles_list'),
+            'output_dir': self.config.get('output_dir', '.'),
         }
 
-        utils.validate_download_inputs(self.settings)
+        utils.validate_inputs(self.settings)
 
     def from_yaml(self, yaml_file: str) -> dict:
         with open(yaml_file, 'r') as file:
