@@ -1,0 +1,29 @@
+.
+├── AUTHORS
+├── estructura.txt
+├── LICENSE
+├── logs
+│   ├── wqsat_get_20250814_172953.log
+│   ├── wqsat_get_20250814_172959.log
+├── notebooks
+│   ├── config.ipynb
+│   └── sentinel_get.ipynb
+├── README.md
+├── regions.yaml
+├── requirements.txt
+├── setup.cfg
+├── setup.py
+├── tests
+│   ├── __init__.py
+│   ├── integration
+│   │   ├── __init__.py
+│   │   └── test_integration_download.py
+│   ├── test_download.py
+│   └── test_search_methods.py
+├── wqsat_get
+│   ├── __init__.py
+│   ├── logging_config.py
+│   ├── manager.py
+│   ├── sentinel_get.py
+│   └── utils.py
+└── WqSat_settings.yaml

@@ -6,8 +6,8 @@ with open('requirements.txt') as f:
 setup(
     name='wqsat_get',
     packages=find_packages(),
-    version='0.1.0',
-    description='Python package for downloading satellite images for water quality monitoring.',
+    version='1.0.0',
+    description='Python package for downloading satellite images.',
     author='CSIC',
     license='Apache License 2.0',
     install_requires=reqs)

@@ -1,6 +1,4 @@
-werkzeug
-pyyaml
-requests
-pbr>=1.8
-tqdm
-pandas
+pyyaml>=6.0
+requests>=2.31.0
+tqdm>=4.65
+pandas>=2.1
