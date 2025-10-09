@@ -3,7 +3,7 @@
 import pandas as pd
 import pytest
 import requests
-from wqsat_get.sentinel_get import Download
+from wqsat_get.sentinel_get import SentinelGet
 
 # Clase auxiliar para simular la respuesta de requests
 class DummyResponse:
@@ -29,7 +29,10 @@ def test_search_by_name(monkeypatch):
     Prueba que search_by_name devuelva un DataFrame con los datos esperados.
     """
     # Creamos la instancia pasando el parámetro 'tile'
-    download_instance = Download(tile="dummyTile")
+    download_instance = SentinelGet(
+        credentials={'username': 'dummy', 'password': 'dummy'},
+        tile="dummyTile"
+    )
     
     # Simulamos la respuesta JSON que devolvería la API
     dummy_json = {"value": [{"Id": "1", "Name": "dummyTile", "Online": True}]}
@@ -51,7 +54,10 @@ def test_search_by_list(monkeypatch):
     """
     # Creamos la instancia pasando una lista de tiles
     tiles = ["tileA", "tileB"]
-    download_instance = Download(tiles_list=tiles)
+    download_instance = SentinelGet(
+        credentials={'username': 'dummy', 'password': 'dummy'},
+        tiles_list=["tileA", "tileB"]
+    )
     
     # Simulamos la respuesta JSON para una búsqueda por lista
     dummy_json = {
@@ -78,10 +84,11 @@ def test_search_by_parameters(monkeypatch):
     Prueba que search_by_parameters devuelva un DataFrame con los datos esperados.
     """
     # Creamos la instancia pasando todos los parámetros necesarios
-    download_instance = Download(
+    download_instance = SentinelGet(
+        credentials={'username': 'dummy', 'password': 'dummy'},
         start_date="2025-01-01",
         end_date="2025-01-31",
-        coordinates=(40.0, -3.0),  # Se generará un POINT con estas coordenadas
+        roi_lat_lon=(40.0, -3.0),  # POINT(lon lat)
         platform="SENTINEL-2",
         product_type="S2MSI2A",
         cloud=50

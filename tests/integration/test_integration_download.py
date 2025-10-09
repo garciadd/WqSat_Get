@@ -2,7 +2,7 @@
 
 import os
 import pytest
-from wqsat_get.sentinel_get import Download
+from wqsat_get.sentinel_get import SentinelGet
 
 # Marcar los tests de integración para saltarlos si no se habilitan.
 pytestmark = pytest.mark.skipif(
@@ -18,7 +18,7 @@ def test_integration_search_by_parameters():
     Ajusta los parámetros según tu entorno y datos de prueba.
     """
     # Parámetros de ejemplo (ajusta a valores válidos para tu API)
-    download_instance = Download(
+    download_instance = SentinelGet(
         start_date="2025-01-01",
         end_date="2025-01-05",
         coordinates=(40.268, -3.8038),  # Ej: Coordenadas de Madrid
@@ -43,7 +43,7 @@ def test_integration_download():
     """
     # Usamos un tile válido conocido en el entorno de pruebas.
     # IMPORTANTE: Ajusta "KNOWN_VALID_TILE" a un valor real o de prueba.
-    download_instance = Download(tile="S2B_MSIL2A_20250102T110349_N0511_R094_T30TVK_20250102T145308.SAFE")
+    download_instance = SentinelGet(tile="S2B_MSIL2A_20250102T110349_N0511_R094_T30TVK_20250102T145308.SAFE")
     
     # Ejecuta la descarga; el método imprimirá mensajes y guardará archivos en output_path.
     downloaded, pending = download_instance.download()
