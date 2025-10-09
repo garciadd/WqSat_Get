@@ -1,0 +1,50 @@
+@@
+-@pytest.fixture
+-def download_instance(clean_output_dir):
+-    """
+-    Crea una instancia de Download con parámetros mínimos para probar search_by_name.
+-    """
+-    # Usamos el parámetro 'tile' para que se invoque search_by_name en search().
+-    return SentinelGet(tile="TestTile")
++@pytest.fixture
++def download_instance(tmp_path, clean_output_dir):
++    """
++    Crea una instancia de SentinelGet con parámetros mínimos para probar search_by_name.
++    Se pasan credenciales dummy (requeridas por la API actual) y un output_dir temporal.
++    """
++    outdir = tmp_path / "out"
++    outdir.mkdir(parents=True, exist_ok=True)
++    return SentinelGet(
++        credentials={"username": "dummy", "password": "dummy"},
++        tile="TestTile",
++        output_dir=str(outdir)
++    )
+@@
+ def patch_utils(monkeypatch):
+     """
+     Parchea las funciones de wqsat_get.utils para que usen las versiones dummy.
+     """
+     import wqsat_get.utils as utils
+-    monkeypatch.setattr(utils, "validate_download_inputs", DummyUtils.validate_download_inputs, raising=False)
+-    monkeypatch.setattr(utils, "load_data_path", DummyUtils.load_data_path)
++    # Los tests antiguos esperaban validate_download_inputs → usa el validador real como alias
++    monkeypatch.setattr(utils, "validate_download_inputs", utils.validate_inputs, raising=False)
++    # Los tests antiguos esperaban load_data_path → devuelve un path temporal controlado en cada test
++    import tempfile
++    tmp_dir = tempfile.mkdtemp(prefix="wqsat_test_")
++    monkeypatch.setattr(utils, "load_data_path", lambda: tmp_dir, raising=False)
+@@
+-def test_init_missing_credentials(monkeypatch):
+-    """
+-    Verifica que si load_credentials retorna vacío, se lance ValueError.
+-    """
+-    import wqsat_get.utils as utils
+-    monkeypatch.setattr(utils, "load_credentials", lambda: {})
+-    # Resto del test...
++def test_init_missing_credentials():
++    """
++    Verifica que si las credenciales son inválidas, se lance ValueError.
++    (Adaptado a la API actual: el constructor valida credenciales)
++    """
++    with pytest.raises(ValueError):
++        SentinelGet(credentials={}, tile="X")
